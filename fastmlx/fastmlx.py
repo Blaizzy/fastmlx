@@ -5,35 +5,38 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import mlx.core as mx
-from mlx_vlm import load, generate
-from mlx_vlm.prompt_utils import get_message_json
-from mlx_vlm.utils import load_image_processor, load_config
+
+try:
+    import mlx.core as mx
+    from mlx_lm import generate as lm_generate
+    from mlx_vlm import generate as vlm_generate
+    from mlx_vlm.prompt_utils import get_message_json
+    from mlx_vlm.utils import load_config
+    from .utils import load_lm_model, load_vlm_model, MODEL_REMAPPING, MODELS
+    MLX_AVAILABLE = True
+except ImportError:
+    print("Warning: mlx or mlx_lm not available. Some functionality will be limited.")
+    MLX_AVAILABLE = False
+
 
 class ModelProvider:
     def __init__(self):
         self.models = {}
 
-
     def load_model(self, model_name: str):
         if model_name not in self.models:
-            model, processor = load(model_name, {"trust_remote_code":True})
-            image_processor = load_image_processor(model_name)
             config = load_config(model_name)
-            self.models[model_name] = {
-                "model": model,
-                "processor": processor,
-                "image_processor": image_processor,
-                "config": config
-            }
+            model_type = MODEL_REMAPPING.get(config["model_type"], config["model_type"])
+            if model_type in MODELS["vlm"]:
+                self.models[model_name] = load_vlm_model(model_name, config)
+            else:
+                self.models[model_name] = load_lm_model(model_name, config)
 
         return self.models[model_name]
 
-    def add_model_path(self, model_name: str, model_path: str):
-        self.model_paths[model_name] = model_path
 
     def get_available_models(self):
-        return list(self.model_paths.keys())
+        return list(self.models.keys())
 
 class ChatMessage(BaseModel):
     role: str
@@ -69,32 +72,55 @@ model_provider = ModelProvider()
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completion(request: ChatCompletionRequest):
+    if not MLX_AVAILABLE:
+        raise HTTPException(status_code=500, detail="MLX library not available")
+
     model_data = model_provider.load_model(request.model)
     model = model_data["model"]
-    processor = model_data["processor"]
-    image_processor = model_data["image_processor"]
     config = model_data["config"]
-    image = request.image
+    model_type = MODEL_REMAPPING.get(config["model_type"], config["model_type"])
 
-    chat_messages = []
+    if model_type in MODELS["vlm"]:
+        processor = model_data["processor"]
+        image_processor = model_data["image_processor"]
 
-    for msg in request.messages:
-        if msg.role == "user":
-            chat_messages.append(get_message_json(config["model_type"], msg.content))
-        else:
-            chat_messages.append({"role": msg.role, "content": msg.content})
+        image = request.image
 
-    prompt = ""
-    if "chat_template" in processor.__dict__.keys():
-        prompt = processor.apply_chat_template(
-            chat_messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        chat_messages = []
 
-    elif "tokenizer" in processor.__dict__.keys():
-        if model.config.model_type != "paligemma":
-            prompt = processor.tokenizer.apply_chat_template(
+        for msg in request.messages:
+            if msg.role == "user":
+                chat_messages.append(get_message_json(config["model_type"], msg.content))
+            else:
+                chat_messages.append({"role": msg.role, "content": msg.content})
+
+        prompt = ""
+        if "chat_template" in processor.__dict__.keys():
+            prompt = processor.apply_chat_template(
+                chat_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+
+        elif "tokenizer" in processor.__dict__.keys():
+            if model.config.model_type != "paligemma":
+                prompt = processor.tokenizer.apply_chat_template(
+                    chat_messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            else:
+                prompt = request.messages[-1].content
+
+
+        # Generate the response
+        output = vlm_generate(model, processor, image, prompt, image_processor, verbose=False)
+
+    else:
+        tokenizer = model_data["tokenizer"]
+        chat_messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        if "chat_template" in tokenizer.__dict__.keys():
+            prompt = tokenizer.apply_chat_template(
                 chat_messages,
                 tokenize=False,
                 add_generation_prompt=True,
@@ -102,9 +128,8 @@ async def chat_completion(request: ChatCompletionRequest):
         else:
             prompt = request.messages[-1].content
 
+        output = lm_generate(model, tokenizer, prompt, verbose=False)
 
-    # Generate the response
-    output = generate(model, processor, image, prompt, image_processor, verbose=False)
 
     # Prepare the response
     response = ChatCompletionResponse(
@@ -127,8 +152,8 @@ async def list_models():
     return {"models": model_provider.get_available_models()}
 
 @app.post("/v1/models")
-async def add_model(model_name: str, model_path: str):
-    model_provider.add_model_path(model_name, model_path)
+async def add_model(model_name: str):
+    model_provider.load_model(model_name)
     return {"status": "success", "message": f"Model {model_name} added successfully"}
 
 if __name__ == "__main__":
