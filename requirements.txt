@@ -1,6 +1,5 @@
-numpy
 mlx>=0.15
-mlx-lm>=0.15.0
+mlx-lm>=0.15.2
 mlx-vlm>=0.0.11
-fastapi>=0.110.0
+fastapi>=0.111.0
 jinja2
