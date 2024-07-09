@@ -156,6 +156,9 @@ async def add_model(model_name: str):
     model_provider.load_model(model_name)
     return {"status": "success", "message": f"Model {model_name} added successfully"}
 
-if __name__ == "__main__":
+def run():
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("fastmlx:app", host="127.0.0.1", port=8000, reload=True)
+
+if __name__ == "__main__":
+    run()

@@ -26,7 +26,7 @@ classifiers = [
 ]
 
 [project.entry-points."console_scripts"]
-fastmlx = "fastmlx.cli:main"
+fastmlx = "fastmlx.fastmlx:run"
 
 [project.optional-dependencies]
 all = [
