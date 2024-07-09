@@ -1,10 +1,12 @@
 """Main module."""
+
 import os
 import time
 from typing import List, Optional
-from pydantic import BaseModel, Field
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 try:
     import mlx.core as mx
@@ -12,7 +14,9 @@ try:
     from mlx_vlm import generate as vlm_generate
     from mlx_vlm.prompt_utils import get_message_json
     from mlx_vlm.utils import load_config
-    from .utils import load_lm_model, load_vlm_model, MODEL_REMAPPING, MODELS
+
+    from .utils import MODEL_REMAPPING, MODELS, load_lm_model, load_vlm_model
+
     MLX_AVAILABLE = True
 except ImportError:
     print("Warning: mlx or mlx_lm not available. Some functionality will be limited.")
@@ -34,13 +38,14 @@ class ModelProvider:
 
         return self.models[model_name]
 
-
     def get_available_models(self):
         return list(self.models.keys())
+
 
 class ChatMessage(BaseModel):
     role: str
     content: str
+
 
 class ChatCompletionRequest(BaseModel):
     model: str
@@ -49,12 +54,14 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: Optional[int] = Field(default=100)
     temperature: Optional[float] = Field(default=0.7)
 
+
 class ChatCompletionResponse(BaseModel):
     id: str
     object: str = "chat.completion"
     created: int
     model: str
     choices: List[dict]
+
 
 app = FastAPI()
 
@@ -69,6 +76,7 @@ app.add_middleware(
 
 # Initialize the ModelProvider
 model_provider = ModelProvider()
+
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completion(request: ChatCompletionRequest):
@@ -90,7 +98,9 @@ async def chat_completion(request: ChatCompletionRequest):
 
         for msg in request.messages:
             if msg.role == "user":
-                chat_messages.append(get_message_json(config["model_type"], msg.content))
+                chat_messages.append(
+                    get_message_json(config["model_type"], msg.content)
+                )
             else:
                 chat_messages.append({"role": msg.role, "content": msg.content})
 
@@ -112,13 +122,16 @@ async def chat_completion(request: ChatCompletionRequest):
             else:
                 prompt = request.messages[-1].content
 
-
         # Generate the response
-        output = vlm_generate(model, processor, image, prompt, image_processor, verbose=False)
+        output = vlm_generate(
+            model, processor, image, prompt, image_processor, verbose=False
+        )
 
     else:
         tokenizer = model_data["tokenizer"]
-        chat_messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        chat_messages = [
+            {"role": msg.role, "content": msg.content} for msg in request.messages
+        ]
         if "chat_template" in tokenizer.__dict__.keys():
             prompt = tokenizer.apply_chat_template(
                 chat_messages,
@@ -129,7 +142,6 @@ async def chat_completion(request: ChatCompletionRequest):
             prompt = request.messages[-1].content
 
         output = lm_generate(model, tokenizer, prompt, verbose=False)
-
 
     # Prepare the response
     response = ChatCompletionResponse(
@@ -147,18 +159,23 @@ async def chat_completion(request: ChatCompletionRequest):
 
     return response
 
+
 @app.get("/v1/models")
 async def list_models():
     return {"models": model_provider.get_available_models()}
+
 
 @app.post("/v1/models")
 async def add_model(model_name: str):
     model_provider.load_model(model_name)
     return {"status": "success", "message": f"Model {model_name} added successfully"}
 
+
 def run():
     import uvicorn
+
     uvicorn.run("fastmlx:app", host="127.0.0.1", port=8000, reload=True)
+
 
 if __name__ == "__main__":
     run()
