@@ -53,7 +53,7 @@
    headers = {"Content-Type": "application/json"}
    data = {
        "model": "mlx-community/nanoLLaVA-1.5-4bit",
-       "image": "http://images.cocodataset.org/,val2017/000000039769.jpg",
+       "image": "http://images.cocodataset.org/val2017/000000039769.jpg",
        "messages": [{"role": "user", "content": "What are these"}],
        "max_tokens": 100
    }
