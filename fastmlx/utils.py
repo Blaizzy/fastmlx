@@ -1,12 +1,14 @@
-import os
 import json
-from typing import Any, Dict, List, Optional
+import os
 import time
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
 
 # MLX Imports
 try:
-    from mlx_lm import load as lm_load, models as lm_models
+    from mlx_lm import load as lm_load
+    from mlx_lm import models as lm_models
     from mlx_lm.utils import stream_generate as lm_stream_generate
     from mlx_vlm import load as vlm_load
     from mlx_vlm import models as vlm_models
@@ -72,6 +74,7 @@ def load_lm_model(model_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
     model, tokenizer = lm_load(model_name)
     return {"model": model, "tokenizer": tokenizer, "config": config}
 
+
 # TODO: Replace on next mlx-vlm release
 def vlm_stream_generate(
     model,
@@ -127,8 +130,25 @@ def vlm_stream_generate(
         yield detokenizer.last_segment
 
 
-def vlm_stream_generator(model, model_name, processor, image, prompt, image_processor, max_tokens, temperature):
-    for token in vlm_stream_generate(model, processor, image, prompt, image_processor, max_tokens=max_tokens, temp=temperature):
+def vlm_stream_generator(
+    model,
+    model_name,
+    processor,
+    image,
+    prompt,
+    image_processor,
+    max_tokens,
+    temperature,
+):
+    for token in vlm_stream_generate(
+        model,
+        processor,
+        image,
+        prompt,
+        image_processor,
+        max_tokens=max_tokens,
+        temp=temperature,
+    ):
         chunk = ChatCompletionChunk(
             id=f"chatcmpl-{os.urandom(4).hex()}",
             created=int(time.time()),
@@ -146,7 +166,9 @@ def vlm_stream_generator(model, model_name, processor, image, prompt, image_proc
 
 
 def lm_stream_generator(model, model_name, tokenizer, prompt, max_tokens, temperature):
-    for token in lm_stream_generate(model, tokenizer, prompt, max_tokens=max_tokens, temp=temperature):
+    for token in lm_stream_generate(
+        model, tokenizer, prompt, max_tokens=max_tokens, temp=temperature
+    ):
         chunk = ChatCompletionChunk(
             id=f"chatcmpl-{os.urandom(4).hex()}",
             created=int(time.time()),

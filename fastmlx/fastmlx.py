@@ -1,9 +1,9 @@
 """Main module."""
 
+import argparse
 import os
 import time
 from typing import List, Optional
-import argparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +16,16 @@ try:
     from mlx_vlm import generate as vlm_generate
     from mlx_vlm.prompt_utils import get_message_json
     from mlx_vlm.utils import load_config
-    from .utils import MODEL_REMAPPING, MODELS, load_lm_model, load_vlm_model, vlm_stream_generator, lm_stream_generator
+
+    from .utils import (
+        MODEL_REMAPPING,
+        MODELS,
+        lm_stream_generator,
+        load_lm_model,
+        load_vlm_model,
+        vlm_stream_generator,
+    )
+
     MLX_AVAILABLE = True
 except ImportError:
     print("Warning: mlx or mlx_lm not available. Some functionality will be limited.")
@@ -63,7 +72,9 @@ class ChatCompletionResponse(BaseModel):
     model: str
     choices: List[dict]
 
+
 app = FastAPI()
+
 
 # Add CORS middleware
 def setup_cors(app: FastAPI, allowed_origins: List[str]):
@@ -127,13 +138,29 @@ async def chat_completion(request: ChatCompletionRequest):
 
         if stream:
             return StreamingResponse(
-                vlm_stream_generator(model, request.model, processor, request.image, prompt, image_processor, request.max_tokens, request.temperature),
-                media_type="text/event-stream"
+                vlm_stream_generator(
+                    model,
+                    request.model,
+                    processor,
+                    request.image,
+                    prompt,
+                    image_processor,
+                    request.max_tokens,
+                    request.temperature,
+                ),
+                media_type="text/event-stream",
             )
         else:
             # Generate the response
             output = vlm_generate(
-                model, processor, image, prompt, image_processor, max_tokens=request.max_tokens, temp=request.temperature, verbose=False
+                model,
+                processor,
+                image,
+                prompt,
+                image_processor,
+                max_tokens=request.max_tokens,
+                temp=request.temperature,
+                verbose=False,
             )
 
     else:
@@ -141,7 +168,9 @@ async def chat_completion(request: ChatCompletionRequest):
         chat_messages = [
             {"role": msg.role, "content": msg.content} for msg in request.messages
         ]
-        if tokenizer.chat_template is not None and hasattr(tokenizer, "apply_chat_template"):
+        if tokenizer.chat_template is not None and hasattr(
+            tokenizer, "apply_chat_template"
+        ):
             prompt = tokenizer.apply_chat_template(
                 chat_messages,
                 tokenize=False,
@@ -152,11 +181,20 @@ async def chat_completion(request: ChatCompletionRequest):
 
         if stream:
             return StreamingResponse(
-                lm_stream_generator(model, request.model, tokenizer, prompt, request.max_tokens, request.temperature),
-                media_type="text/event-stream"
+                lm_stream_generator(
+                    model,
+                    request.model,
+                    tokenizer,
+                    prompt,
+                    request.max_tokens,
+                    request.temperature,
+                ),
+                media_type="text/event-stream",
             )
         else:
-            output = lm_generate(model, tokenizer, prompt, request.max_tokens, False, request.temperature)
+            output = lm_generate(
+                model, tokenizer, prompt, request.max_tokens, False, request.temperature
+            )
 
     # Prepare the response
     response = ChatCompletionResponse(
@@ -188,18 +226,26 @@ async def add_model(model_name: str):
 
 def run():
     parser = argparse.ArgumentParser(description="FastMLX API server")
-    parser.add_argument('--allowed-origins', nargs='+', default=["*"],
-                        help='List of allowed origins for CORS')
-    parser.add_argument('--host', type=str, default="0.0.0.0",
-                        help='Host to run the server on')
-    parser.add_argument('--port', type=int, default=8000,
-                        help='Port to run the server on')
+    parser.add_argument(
+        "--allowed-origins",
+        nargs="+",
+        default=["*"],
+        help="List of allowed origins for CORS",
+    )
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host to run the server on"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port to run the server on"
+    )
     args = parser.parse_args()
 
     setup_cors(app, args.allowed_origins)
 
     import uvicorn
+
     uvicorn.run("fastmlx:app", host=args.host, port=args.port, reload=True)
+
 
 if __name__ == "__main__":
     run()
