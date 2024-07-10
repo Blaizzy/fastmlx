@@ -238,13 +238,21 @@ def run():
     parser.add_argument(
         "--port", type=int, default=8000, help="Port to run the server on"
     )
+    parser.add_argument("--workers", type=int, default=None, help="Number of workers")
     args = parser.parse_args()
 
     setup_cors(app, args.allowed_origins)
 
     import uvicorn
 
-    uvicorn.run("fastmlx:app", host=args.host, port=args.port, reload=True)
+    uvicorn.run(
+        "fastmlx:app",
+        host=args.host,
+        port=args.port,
+        reload=False,
+        workers=args.workers,
+        loop="asyncio",
+    )
 
 
 if __name__ == "__main__":
