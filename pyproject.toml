@@ -9,6 +9,12 @@ readme = "README.md"
 requires-python = ">=3.8"
 keywords = [
     "fastmlx",
+    "MLX",
+    "Apple MLX",
+    "vision language models"
+    "VLMs",
+    "large language models",
+    "LLMs",
 ]
 license = {text = "Apache Software License 2.0"}
 authors = [
@@ -34,7 +40,7 @@ all = [
 ]
 
 extra = [
-    "pandas",
+    "",
 ]
 
 
