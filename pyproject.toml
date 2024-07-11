@@ -39,9 +39,7 @@ all = [
     "fastmlx[extra]",
 ]
 
-extra = [
-    "",
-]
+extra = []
 
 
 [tool]
