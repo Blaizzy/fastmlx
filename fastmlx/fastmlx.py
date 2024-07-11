@@ -36,7 +36,7 @@ class ModelProvider:
     def __init__(self):
         self.models = {}
 
-    def load_model(self, model_name: str):
+    async def load_model(self, model_name: str):
         if model_name not in self.models:
             config = load_config(model_name)
             model_type = MODEL_REMAPPING.get(config["model_type"], config["model_type"])
@@ -97,7 +97,7 @@ async def chat_completion(request: ChatCompletionRequest):
         raise HTTPException(status_code=500, detail="MLX library not available")
 
     stream = request.stream
-    model_data = model_provider.load_model(request.model)
+    model_data = await model_provider.load_model(request.model)
     model = model_data["model"]
     config = model_data["config"]
     model_type = MODEL_REMAPPING.get(config["model_type"], config["model_type"])
