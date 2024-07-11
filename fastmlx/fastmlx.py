@@ -1,11 +1,13 @@
 """Main module."""
 
 import argparse
+import asyncio
 import os
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -34,7 +36,8 @@ except ImportError:
 
 class ModelProvider:
     def __init__(self):
-        self.models = {}
+        self.models: Dict[str, Dict[str, Any]] = {}
+        self.lock = asyncio.Lock()
 
     def load_model(self, model_name: str):
         if model_name not in self.models:
@@ -47,8 +50,16 @@ class ModelProvider:
 
         return self.models[model_name]
 
-    def get_available_models(self):
-        return list(self.models.keys())
+    async def remove_model(self, model_name: str) -> bool:
+        async with self.lock:
+            if model_name in self.models:
+                del self.models[model_name]
+                return True
+            return False
+
+    async def get_available_models(self):
+        async with self.lock:
+            return list(self.models.keys())
 
 
 class ChatMessage(BaseModel):
@@ -215,13 +226,23 @@ async def chat_completion(request: ChatCompletionRequest):
 
 @app.get("/v1/models")
 async def list_models():
-    return {"models": model_provider.get_available_models()}
+    return {"models": await model_provider.get_available_models()}
 
 
 @app.post("/v1/models")
 async def add_model(model_name: str):
     model_provider.load_model(model_name)
     return {"status": "success", "message": f"Model {model_name} added successfully"}
+
+
+@app.delete("/v1/models")
+async def remove_model(model_name: str):
+    model_name = unquote(model_name).strip('"')
+    removed = await model_provider.remove_model(model_name)
+    if removed:
+        return Response(status_code=204)  # 204 No Content - successful deletion
+    else:
+        raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
 
 
 def run():
@@ -238,7 +259,13 @@ def run():
     parser.add_argument(
         "--port", type=int, default=8000, help="Port to run the server on"
     )
-    parser.add_argument("--workers", type=int, default=None, help="Number of workers")
+    parser.add_argument(
+        "--reload",
+        type=bool,
+        default=False,
+        help="Enable auto-reload of the server. Only works when 'workers' is set to None.",
+    )
+    parser.add_argument("--workers", type=int, default=2, help="Number of workers")
     args = parser.parse_args()
 
     setup_cors(app, args.allowed_origins)
@@ -249,7 +276,7 @@ def run():
         "fastmlx:app",
         host=args.host,
         port=args.port,
-        reload=False,
+        reload=args.reload,
         workers=args.workers,
         loop="asyncio",
     )
