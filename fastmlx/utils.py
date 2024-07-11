@@ -30,6 +30,11 @@ class ChatCompletionChunk(BaseModel):
     choices: List[Dict[str, Any]]
 
 
+class SupportedModels(BaseModel):
+    vlm: List[str]
+    lm: List[str]
+
+
 def get_model_type_list(models, type="vlm"):
 
     # Get the directory path of the models package
@@ -48,7 +53,8 @@ def get_model_type_list(models, type="vlm"):
         ]
         return submodules
     else:
-        return all_items
+
+        return [item for item in all_items if not item.startswith("__")]
 
 
 MODELS = {

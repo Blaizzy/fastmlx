@@ -174,6 +174,16 @@ async def test_lm_streaming(client):
     assert chunks[-2] == "data: [DONE]"
 
 
+def test_get_supported_models(client):
+    response = client.get("/v1/supported_models")
+    assert response.status_code == 200
+    data = response.json()
+    assert "vlm" in data
+    assert "lm" in data
+    assert data["vlm"] == ["llava"]
+    assert data["lm"] == ["phi"]
+
+
 def test_list_models(client):
     client.post("/v1/models?model_name=test_llava_model")
     client.post("/v1/models?model_name=test_phi_model")

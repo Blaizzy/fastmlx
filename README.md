@@ -44,7 +44,6 @@
    Use the API similar to OpenAI's chat completions:
 
    **Vision Language Model**
-
    ```python
    import requests
    import json
@@ -61,6 +60,59 @@
    response = requests.post(url, headers=headers, data=json.dumps(data))
    print(response.json())
    ```
+
+   With streaming:
+   ```python
+   import requests
+   import json
+
+   def process_sse_stream(url, headers, data):
+      response = requests.post(url, headers=headers, json=data, stream=True)
+
+      if response.status_code != 200:
+         print(f"Error: Received status code {response.status_code}")
+         print(response.text)
+         return
+
+      full_content = ""
+
+      try:
+         for line in response.iter_lines():
+               if line:
+                  line = line.decode('utf-8')
+                  if line.startswith('data: '):
+                     event_data = line[6:]  # Remove 'data: ' prefix
+                     if event_data == '[DONE]':
+                           print("\nStream finished. ✅")
+                           break
+                     try:
+                           chunk_data = json.loads(event_data)
+                           content = chunk_data['choices'][0]['delta']['content']
+                           full_content += content
+                           print(content, end='', flush=True)
+                     except json.JSONDecodeError:
+                           print(f"\nFailed to decode JSON: {event_data}")
+                     except KeyError:
+                           print(f"\nUnexpected data structure: {chunk_data}")
+
+      except KeyboardInterrupt:
+         print("\nStream interrupted by user.")
+      except requests.exceptions.RequestException as e:
+         print(f"\nAn error occurred: {e}")
+
+   if __name__ == "__main__":
+      url = "http://localhost:8000/v1/chat/completions"
+      headers = {"Content-Type": "application/json"}
+      data = {
+         "model": "mlx-community/nanoLLaVA-1.5-4bit",
+         "image": "http://images.cocodataset.org/val2017/000000039769.jpg",
+         "messages": [{"role": "user", "content": "What are these?"}],
+         "max_tokens": 500,
+         "stream": True
+      }
+      process_sse_stream(url, headers, data)
+   ```
+
    **Language Model**
    ```python
    import requests
@@ -78,7 +130,70 @@
    print(response.json())
    ```
 
-4. **Adding a New Model**
+   With streaming:
+   ```python
+   import requests
+   import json
+
+   def process_sse_stream(url, headers, data):
+      response = requests.post(url, headers=headers, json=data, stream=True)
+
+      if response.status_code != 200:
+         print(f"Error: Received status code {response.status_code}")
+         print(response.text)
+         return
+
+      full_content = ""
+
+      try:
+         for line in response.iter_lines():
+               if line:
+                  line = line.decode('utf-8')
+                  if line.startswith('data: '):
+                     event_data = line[6:]  # Remove 'data: ' prefix
+                     if event_data == '[DONE]':
+                           print("\nStream finished. ✅")
+                           break
+                     try:
+                           chunk_data = json.loads(event_data)
+                           content = chunk_data['choices'][0]['delta']['content']
+                           full_content += content
+                           print(content, end='', flush=True)
+                     except json.JSONDecodeError:
+                           print(f"\nFailed to decode JSON: {event_data}")
+                     except KeyError:
+                           print(f"\nUnexpected data structure: {chunk_data}")
+
+      except KeyboardInterrupt:
+         print("\nStream interrupted by user.")
+      except requests.exceptions.RequestException as e:
+         print(f"\nAn error occurred: {e}")
+
+   if __name__ == "__main__":
+      url = "http://localhost:8000/v1/chat/completions"
+      headers = {"Content-Type": "application/json"}
+      data = {
+         "model": "mlx-community/gemma-2-9b-it-4bit",
+         "messages": [{"role": "user", "content": "Hi, how are you?"}],
+         "max_tokens": 500,
+         "stream": True
+      }
+      process_sse_stream(url, headers, data)
+   ```
+
+4. **Listing Available Models**
+
+   To see all vision and language models supported by MLX:
+
+   ```python
+   import requests
+
+   url = "http://localhost:8000/v1/supported_models"
+   response = requests.get(url)
+   print(response.json())
+   ```
+
+5. **List Available Models**
 
    You can add new models to the API:
 
@@ -94,7 +209,7 @@
    print(response.json())
    ```
 
-5. **Listing Available Models**
+6. **Listing Available Models**
 
    To see all available models:
 
@@ -104,6 +219,21 @@
    url = "http://localhost:8000/v1/models"
    response = requests.get(url)
    print(response.json())
+   ```
+
+7. **Delete Models**
+
+   To remove any models loaded to memory:
+
+   ```python
+   import requests
+
+   url = "http://localhost:8000/v1/models"
+   params = {
+      "model_name": "hf-repo-or-path",
+   }
+   response = requests.delete(url, params=params)
+   print(response)
    ```
 
 For more detailed usage instructions and API documentation, please refer to the [full documentation](https://Blaizzy.github.io/fastmlx).

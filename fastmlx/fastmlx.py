@@ -9,7 +9,7 @@ from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 try:
@@ -22,6 +22,7 @@ try:
     from .utils import (
         MODEL_REMAPPING,
         MODELS,
+        SupportedModels,
         lm_stream_generator,
         load_lm_model,
         load_vlm_model,
@@ -222,6 +223,14 @@ async def chat_completion(request: ChatCompletionRequest):
     )
 
     return response
+
+
+@app.get("/v1/supported_models", response_model=SupportedModels)
+async def get_supported_models():
+    """
+    Get a list of supported model types for VLM and LM.
+    """
+    return JSONResponse(content=MODELS)
 
 
 @app.get("/v1/models")
