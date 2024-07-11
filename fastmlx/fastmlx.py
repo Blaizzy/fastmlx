@@ -1,11 +1,15 @@
 """Main module."""
 
+import argparse
+import asyncio
 import os
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 try:
@@ -15,7 +19,15 @@ try:
     from mlx_vlm.prompt_utils import get_message_json
     from mlx_vlm.utils import load_config
 
-    from .utils import MODEL_REMAPPING, MODELS, load_lm_model, load_vlm_model
+    from .utils import (
+        MODEL_REMAPPING,
+        MODELS,
+        SupportedModels,
+        lm_stream_generator,
+        load_lm_model,
+        load_vlm_model,
+        vlm_stream_generator,
+    )
 
     MLX_AVAILABLE = True
 except ImportError:
@@ -25,7 +37,8 @@ except ImportError:
 
 class ModelProvider:
     def __init__(self):
-        self.models = {}
+        self.models: Dict[str, Dict[str, Any]] = {}
+        self.lock = asyncio.Lock()
 
     def load_model(self, model_name: str):
         if model_name not in self.models:
@@ -38,8 +51,16 @@ class ModelProvider:
 
         return self.models[model_name]
 
-    def get_available_models(self):
-        return list(self.models.keys())
+    async def remove_model(self, model_name: str) -> bool:
+        async with self.lock:
+            if model_name in self.models:
+                del self.models[model_name]
+                return True
+            return False
+
+    async def get_available_models(self):
+        async with self.lock:
+            return list(self.models.keys())
 
 
 class ChatMessage(BaseModel):
@@ -52,7 +73,8 @@ class ChatCompletionRequest(BaseModel):
     messages: List[ChatMessage]
     image: Optional[str] = Field(default=None)
     max_tokens: Optional[int] = Field(default=100)
-    temperature: Optional[float] = Field(default=0.7)
+    stream: Optional[bool] = Field(default=False)
+    temperature: Optional[float] = Field(default=0.2)
 
 
 class ChatCompletionResponse(BaseModel):
@@ -65,14 +87,17 @@ class ChatCompletionResponse(BaseModel):
 
 app = FastAPI()
 
+
 # Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def setup_cors(app: FastAPI, allowed_origins: List[str]):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 # Initialize the ModelProvider
 model_provider = ModelProvider()
@@ -83,6 +108,7 @@ async def chat_completion(request: ChatCompletionRequest):
     if not MLX_AVAILABLE:
         raise HTTPException(status_code=500, detail="MLX library not available")
 
+    stream = request.stream
     model_data = model_provider.load_model(request.model)
     model = model_data["model"]
     config = model_data["config"]
@@ -122,17 +148,41 @@ async def chat_completion(request: ChatCompletionRequest):
             else:
                 prompt = request.messages[-1].content
 
-        # Generate the response
-        output = vlm_generate(
-            model, processor, image, prompt, image_processor, verbose=False
-        )
+        if stream:
+            return StreamingResponse(
+                vlm_stream_generator(
+                    model,
+                    request.model,
+                    processor,
+                    request.image,
+                    prompt,
+                    image_processor,
+                    request.max_tokens,
+                    request.temperature,
+                ),
+                media_type="text/event-stream",
+            )
+        else:
+            # Generate the response
+            output = vlm_generate(
+                model,
+                processor,
+                image,
+                prompt,
+                image_processor,
+                max_tokens=request.max_tokens,
+                temp=request.temperature,
+                verbose=False,
+            )
 
     else:
         tokenizer = model_data["tokenizer"]
         chat_messages = [
             {"role": msg.role, "content": msg.content} for msg in request.messages
         ]
-        if "chat_template" in tokenizer.__dict__.keys():
+        if tokenizer.chat_template is not None and hasattr(
+            tokenizer, "apply_chat_template"
+        ):
             prompt = tokenizer.apply_chat_template(
                 chat_messages,
                 tokenize=False,
@@ -141,7 +191,22 @@ async def chat_completion(request: ChatCompletionRequest):
         else:
             prompt = request.messages[-1].content
 
-        output = lm_generate(model, tokenizer, prompt, verbose=False)
+        if stream:
+            return StreamingResponse(
+                lm_stream_generator(
+                    model,
+                    request.model,
+                    tokenizer,
+                    prompt,
+                    request.max_tokens,
+                    request.temperature,
+                ),
+                media_type="text/event-stream",
+            )
+        else:
+            output = lm_generate(
+                model, tokenizer, prompt, request.max_tokens, False, request.temperature
+            )
 
     # Prepare the response
     response = ChatCompletionResponse(
@@ -160,9 +225,17 @@ async def chat_completion(request: ChatCompletionRequest):
     return response
 
 
+@app.get("/v1/supported_models", response_model=SupportedModels)
+async def get_supported_models():
+    """
+    Get a list of supported model types for VLM and LM.
+    """
+    return JSONResponse(content=MODELS)
+
+
 @app.get("/v1/models")
 async def list_models():
-    return {"models": model_provider.get_available_models()}
+    return {"models": await model_provider.get_available_models()}
 
 
 @app.post("/v1/models")
@@ -171,10 +244,51 @@ async def add_model(model_name: str):
     return {"status": "success", "message": f"Model {model_name} added successfully"}
 
 
+@app.delete("/v1/models")
+async def remove_model(model_name: str):
+    model_name = unquote(model_name).strip('"')
+    removed = await model_provider.remove_model(model_name)
+    if removed:
+        return Response(status_code=204)  # 204 No Content - successful deletion
+    else:
+        raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+
+
 def run():
+    parser = argparse.ArgumentParser(description="FastMLX API server")
+    parser.add_argument(
+        "--allowed-origins",
+        nargs="+",
+        default=["*"],
+        help="List of allowed origins for CORS",
+    )
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host to run the server on"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port to run the server on"
+    )
+    parser.add_argument(
+        "--reload",
+        type=bool,
+        default=False,
+        help="Enable auto-reload of the server. Only works when 'workers' is set to None.",
+    )
+    parser.add_argument("--workers", type=int, default=2, help="Number of workers")
+    args = parser.parse_args()
+
+    setup_cors(app, args.allowed_origins)
+
     import uvicorn
 
-    uvicorn.run("fastmlx:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(
+        "fastmlx:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        workers=args.workers,
+        loop="asyncio",
+    )
 
 
 if __name__ == "__main__":

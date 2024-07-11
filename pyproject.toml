@@ -1,6 +1,6 @@
 [project]
 name = "fastmlx"
-version = "0.0.1"
+version = "0.1.0"
 dynamic = [
     "dependencies",
 ]
@@ -9,6 +9,12 @@ readme = "README.md"
 requires-python = ">=3.8"
 keywords = [
     "fastmlx",
+    "MLX",
+    "Apple MLX",
+    "vision language models",
+    "VLMs",
+    "large language models",
+    "LLMs",
 ]
 license = {text = "Apache Software License 2.0"}
 authors = [
@@ -33,9 +39,7 @@ all = [
     "fastmlx[extra]",
 ]
 
-extra = [
-    "pandas",
-]
+extra = []
 
 
 [tool]
@@ -52,7 +56,7 @@ universal = true
 
 
 [tool.bumpversion]
-current_version = "0.0.1"
+current_version = "0.1.0"
 commit = true
 tag = true
 
