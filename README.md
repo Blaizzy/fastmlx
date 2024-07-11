@@ -31,13 +31,42 @@
 
    Start the FastMLX server:
    ```bash
-   fastmlx
+   fastmlx 
    ```
    or
 
    ```bash
-   uvicorn fastmlx:app --reload
+   uvicorn fastmlx:app --reload --workers 0
    ```
+
+### Running with Multiple Workers (Parallel Processing)
+
+For improved performance and parallel processing capabilities, you can specify the number of worker processes. This is particularly useful for handling multiple requests simultaneously.
+
+```bash
+fastmlx --workers 4 
+```
+or
+
+```bash
+uvicorn fastmlx:app --workers 4
+```
+
+Replace `4` with the desired number of worker processes. The optimal number depends on your system's resources and the specific requirements of your application.
+
+Notes:
+- The `--reload` flag is useful during development as it automatically reloads the server when code changes are detected. However, it should not be used in production.
+- When using multiple workers, the `--reload` flag is not compatible and should be omitted.
+- The number of workers should typically not exceed the number of CPU cores available on your machine for optimal performance.
+
+### Considerations for Multi-Worker Setup
+
+1. **Stateless Application**: Ensure your FastMLX application is stateless, as each worker process operates independently.
+2. **Database Connections**: If your app uses a database, make sure your connection pooling is configured to handle multiple workers.
+3. **Resource Usage**: Monitor your system's resource usage to find the optimal number of workers for your specific hardware and application needs. Additionally, you can remove any unused models using the delete model endpoint.
+4. **Load Balancing**: When running with multiple workers, incoming requests are automatically load-balanced across the worker processes.
+
+By leveraging multiple workers, you can significantly improve the throughput and responsiveness of your FastMLX application, especially under high load conditions.
 
 3. **Making API Calls**
 
