@@ -8,6 +8,7 @@ It offers an OpenAI-compatible API for chat completions and model management.
 import argparse
 import asyncio
 import os
+import time
 from typing import Any, Dict, List
 from urllib.parse import unquote
 
@@ -269,12 +270,20 @@ async def get_supported_models():
 @app.get("/v1/models")
 async def list_models():
     """
-    List all available (loaded) models.
-
-    Returns:
-        dict (dict): A dictionary containing the list of available models.
+    Get list of models - provided in OpenAI API compliant format.
     """
-    return {"models": await model_provider.get_available_models()}
+    models = await model_provider.get_available_models()
+    models_data = []
+    for model in models:
+        models_data.append(
+            {
+                "id": model,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "system",
+            }
+        )
+    return {"object": "list", "data": models_data}
 
 
 @app.post("/v1/models")
