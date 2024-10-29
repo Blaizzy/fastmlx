@@ -19,6 +19,7 @@ from .types.chat.chat_completion import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatMessage,
+    Usage,
 )
 from .types.model import SupportedModels
 
@@ -180,6 +181,7 @@ async def chat_completion(request: ChatCompletionRequest):
                     image_processor,
                     request.max_tokens,
                     request.temperature,
+                    stream_options=request.stream_options,
                 ),
                 media_type="text/event-stream",
             )
@@ -235,11 +237,12 @@ async def chat_completion(request: ChatCompletionRequest):
                     request.max_tokens,
                     request.temperature,
                     stop_words=stop_words,
+                    stream_options=request.stream_options,
                 ),
                 media_type="text/event-stream",
             )
         else:
-            output = lm_generate(
+            output, token_length_info = lm_generate(
                 model,
                 tokenizer,
                 prompt,
@@ -249,7 +252,7 @@ async def chat_completion(request: ChatCompletionRequest):
             )
 
     # Parse the output to check for function calls
-    return handle_function_calls(output, request)
+    return handle_function_calls(output, request, token_length_info)
 
 
 @app.get("/v1/supported_models", response_model=SupportedModels)
