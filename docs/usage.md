@@ -89,7 +89,7 @@ response = requests.post(url, headers=headers, data=json.dumps(data))
 print(response.json())
 ```
 
-#### Without Streaming
+#### With Streaming
 ```python
 import requests
 import json
